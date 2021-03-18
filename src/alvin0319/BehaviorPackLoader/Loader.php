@@ -15,7 +15,11 @@ use pocketmine\network\mcpe\protocol\ResourcePackChunkRequestPacket;
 use pocketmine\network\mcpe\protocol\ResourcePackClientResponsePacket;
 use pocketmine\network\mcpe\protocol\ResourcePackDataInfoPacket;
 use pocketmine\network\mcpe\protocol\ResourcePacksInfoPacket;
+use pocketmine\network\mcpe\protocol\ResourcePackStackPacket;
+use pocketmine\network\mcpe\protocol\StartGamePacket;
 use pocketmine\network\mcpe\protocol\types\resourcepacks\BehaviorPackInfoEntry;
+use pocketmine\network\mcpe\protocol\types\resourcepacks\ResourcePackStackEntry;
+use pocketmine\network\mcpe\protocol\types\resourcepacks\ResourcePackType;
 use pocketmine\plugin\PluginBase;
 use function array_map;
 use function ceil;
@@ -36,10 +40,19 @@ final class Loader extends PluginBase{
 			foreach($packets as $packet){
 				if($packet instanceof ResourcePacksInfoPacket){
 					$packet->behaviorPackEntries = array_map(function(BehaviorPack $pack) : BehaviorPackInfoEntry{
-						return new BehaviorPackInfoEntry($pack->getPackId(), $pack->getPackVersion(), $pack->getPackSize(), "", "", "", true);
+						return new BehaviorPackInfoEntry($pack->getPackId(), $pack->getPackVersion(), $pack->getPackSize(), "", "", "", false);
 					}, $this->behaviorPackManager->getBehaviorPacks());
-					$packet->mustAccept = $this->behaviorPackManager->resourcePacksRequired();
-					$packet->hasScripts = true;
+					$packet->mustAccept = $packet->mustAccept && $this->behaviorPackManager->resourcePacksRequired();
+				}elseif($packet instanceof ResourcePackStackPacket){
+					$stack = array_map(static function(BehaviorPack $pack) : ResourcePackStackEntry{
+						return new ResourcePackStackEntry($pack->getPackId(), $pack->getPackVersion(), ""); //TODO: subpacks
+					}, $this->behaviorPackManager->getBehaviorPacks());
+					$packet->behaviorPackStack = $stack;
+					foreach($event->getTargets() as $session){
+						$session->getLogger()->debug("Applying behavior pack stack");
+					}
+				}elseif($packet instanceof StartGamePacket){
+					//$packet->hasLockedBehaviorPack = true;
 				}
 			}
 		}, EventPriority::MONITOR, $this, true);
@@ -59,19 +72,23 @@ final class Loader extends PluginBase{
 						if(!($pack instanceof BehaviorPack)){
 							return;
 						}
-						$session->sendDataPacket(ResourcePackDataInfoPacket::create(
+						$pk = ResourcePackDataInfoPacket::create(
 							$pack->getPackId(),
 							128 * 1024,
 							(int) ceil($pack->getPackSize() / 128 * 1024),
 							$pack->getPackSize(),
 							$pack->getSha256()
-						));
+						);
+						$pk->packType = ResourcePackType::BEHAVIORS;
+						$session->sendDataPacket($pk);
 						$event->cancel();
 					}
 				}
-			}
-			if($packet instanceof ResourcePackChunkRequestPacket){
+			}elseif($packet instanceof ResourcePackChunkRequestPacket){
 				$pack = $this->behaviorPackManager->getPackById($packet->packId);
+				if(!$pack instanceof BehaviorPack){
+					return;
+				}
 				$packId = $pack->getPackId();
 
 				if(isset($this->downloadedChunks[$session->getPlayerInfo()->getUsername()][$packId][$packet->chunkIndex])){
