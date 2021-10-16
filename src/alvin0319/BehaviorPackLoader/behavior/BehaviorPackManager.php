@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace alvin0319\BehaviorPackLoader\behavior;
 
 use alvin0319\BehaviorPackLoader\Loader;
+use InvalidArgumentException;
+use Logger;
 use pocketmine\resourcepacks\ResourcePack;
 use pocketmine\resourcepacks\ResourcePackException;
 use pocketmine\utils\Config;
+use SplFileInfo;
 use function array_keys;
-use function copy;
 use function count;
 use function file_exists;
 use function gettype;
@@ -34,7 +36,7 @@ final class BehaviorPackManager{
 	/** @var BehaviorPack[] */
 	private array $uuidList = [];
 
-	public function __construct(Loader $loader, string $path, \Logger $logger){
+	public function __construct(Loader $loader, string $path, Logger $logger){
 		$this->loader = $loader;
 		$this->path = $path;
 
@@ -42,7 +44,7 @@ final class BehaviorPackManager{
 			$logger->debug("Behavior packs path $path does not exist, creating directory");
 			mkdir($this->path);
 		}elseif(!is_dir($this->path)){
-			throw new \InvalidArgumentException("Resource packs path $path exists and is not a directory");
+			throw new InvalidArgumentException("Resource packs path $path exists and is not a directory");
 		}
 
 		if(!file_exists($this->path . "behavior_packs.yml")){
@@ -58,7 +60,7 @@ final class BehaviorPackManager{
 
 		$resourceStack = $resourcePacksConfig->get("resource_stack", []);
 		if(!is_array($resourceStack)){
-			throw new \InvalidArgumentException("\"resource_stack\" key should contain a list of pack names");
+			throw new InvalidArgumentException("\"resource_stack\" key should contain a list of pack names");
 		}
 
 		foreach($resourceStack as $pos => $pack){
@@ -77,7 +79,7 @@ final class BehaviorPackManager{
 
 				$newPack = null;
 				//Detect the type of resource pack.
-				$info = new \SplFileInfo($packPath);
+				$info = new SplFileInfo($packPath);
 				switch($info->getExtension()){
 					case "zip":
 					case "mcpack":

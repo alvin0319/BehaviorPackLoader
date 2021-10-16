@@ -17,6 +17,7 @@ use pocketmine\network\mcpe\protocol\ResourcePackDataInfoPacket;
 use pocketmine\network\mcpe\protocol\ResourcePacksInfoPacket;
 use pocketmine\network\mcpe\protocol\ResourcePackStackPacket;
 use pocketmine\network\mcpe\protocol\StartGamePacket;
+use pocketmine\network\mcpe\protocol\types\Experiments;
 use pocketmine\network\mcpe\protocol\types\resourcepacks\BehaviorPackInfoEntry;
 use pocketmine\network\mcpe\protocol\types\resourcepacks\ResourcePackStackEntry;
 use pocketmine\network\mcpe\protocol\types\resourcepacks\ResourcePackType;
@@ -39,7 +40,7 @@ final class Loader extends PluginBase{
 			$packets = $event->getPackets();
 			foreach($packets as $packet){
 				if($packet instanceof ResourcePacksInfoPacket){
-					$packet->behaviorPackEntries = array_map(function(BehaviorPack $pack) : BehaviorPackInfoEntry{
+					$packet->behaviorPackEntries = array_map(static function(BehaviorPack $pack) : BehaviorPackInfoEntry{
 						return new BehaviorPackInfoEntry($pack->getPackId(), $pack->getPackVersion(), $pack->getPackSize(), "", "", "", false);
 					}, $this->behaviorPackManager->getBehaviorPacks());
 					$packet->mustAccept = $packet->mustAccept && $this->behaviorPackManager->resourcePacksRequired();
@@ -52,15 +53,21 @@ final class Loader extends PluginBase{
 						$session->getLogger()->debug("Applying behavior pack stack");
 					}
 				}elseif($packet instanceof StartGamePacket){
-					//$packet->hasLockedBehaviorPack = true;
+					$experiments = [
+						"gametest" => true,
+						"upcoming_creator_features" => true
+					];
+					foreach($experiments as $experiment => $experimentValue){
+						$experiments[$experiment] = $experimentValue;
+					}
+					$packet->experiments = new Experiments($experiments, $packet->experiments->hasPreviouslyUsedExperiments());
 				}
 			}
-		}, EventPriority::MONITOR, $this, true);
+		}, EventPriority::HIGHEST, $this, true);
 
 		$this->getServer()->getPluginManager()->registerEvent(DataPacketReceiveEvent::class, function(DataPacketReceiveEvent $event) : void{
 			$packet = $event->getPacket();
 			$session = $event->getOrigin();
-			//var_dump($packet->pid());
 			if($packet instanceof ResourcePackClientResponsePacket){
 				if($packet->status === ResourcePackClientResponsePacket::STATUS_SEND_PACKS){
 					foreach($packet->packIds as $uuid){
@@ -81,8 +88,8 @@ final class Loader extends PluginBase{
 						);
 						$pk->packType = ResourcePackType::BEHAVIORS;
 						$session->sendDataPacket($pk);
-						$event->cancel();
 					}
+					$event->cancel();
 				}
 			}elseif($packet instanceof ResourcePackChunkRequestPacket){
 				$pack = $this->behaviorPackManager->getPackById($packet->packId);
@@ -91,21 +98,21 @@ final class Loader extends PluginBase{
 				}
 				$packId = $pack->getPackId();
 
-				if(isset($this->downloadedChunks[$session->getPlayerInfo()->getUsername()][$packId][$packet->chunkIndex])){
+				if(isset($this->downloadedChunks[$session->getPlayerInfo()?->getUsername()][$packId][$packet->chunkIndex])){
 					$session->disconnect("Duplicate request for chunk $packet->chunkIndex of pack $packet->packId");
 					return;
 				}
 
 				$offset = $packet->chunkIndex * 128 * 1024;
-				if($offset < 0 or $offset >= $pack->getPackSize()){
+				if($offset < 0 || $offset >= $pack->getPackSize()){
 					$session->disconnect("Invalid out-of-bounds request for chunk $packet->chunkIndex of $packet->packId: offset $offset, file size " . $pack->getPackSize());
 					return;
 				}
 
-				if(!isset($this->downloadedChunks[$session->getPlayerInfo()->getUsername()][$packId])){
-					$this->downloadedChunks[$session->getPlayerInfo()->getUsername()][$packId] = [$packet->chunkIndex => true];
+				if(!isset($this->downloadedChunks[$session->getPlayerInfo()?->getUsername()][$packId])){
+					$this->downloadedChunks[$session->getPlayerInfo()?->getUsername()][$packId] = [$packet->chunkIndex => true];
 				}else{
-					$this->downloadedChunks[$session->getPlayerInfo()->getUsername()][$packId][$packet->chunkIndex] = true;
+					$this->downloadedChunks[$session->getPlayerInfo()?->getUsername()][$packId][$packet->chunkIndex] = true;
 				}
 
 				$session->sendDataPacket(

@@ -6,8 +6,14 @@ namespace alvin0319\BehaviorPackLoader\behavior;
 
 use Ahc\Json\Comment as CommentedJsonDecoder;
 use alvin0319\BehaviorPackLoader\behavior\json\BehaviorManifest;
+use InvalidArgumentException;
+use JsonMapper;
+use JsonMapper_Exception;
 use pocketmine\resourcepacks\ResourcePack;
 use pocketmine\resourcepacks\ResourcePackException;
+use RuntimeException;
+use stdClass;
+use ZipArchive;
 use function assert;
 use function fclose;
 use function feof;
@@ -38,6 +44,7 @@ final class BehaviorPack implements ResourcePack{
 
 	/**
 	 * @param string $zipPath Path to the resource pack zip
+	 *
 	 * @throws ResourcePackException
 	 */
 	public function __construct(string $zipPath){
@@ -47,7 +54,7 @@ final class BehaviorPack implements ResourcePack{
 			throw new ResourcePackException("File not found");
 		}
 
-		$archive = new \ZipArchive();
+		$archive = new ZipArchive();
 		if(($openResult = $archive->open($zipPath)) !== true){
 			throw new ResourcePackException("Encountered ZipArchive error code $openResult while trying to open $zipPath");
 		}
@@ -80,21 +87,21 @@ final class BehaviorPack implements ResourcePack{
 		//maybe comments in the json, use stripped decoder (thanks mojang)
 		try{
 			$manifest = (new CommentedJsonDecoder())->decode($manifestData);
-		}catch(\RuntimeException $e){
+		}catch(RuntimeException $e){
 			throw new ResourcePackException("Failed to parse manifest.json: " . $e->getMessage(), $e->getCode(), $e);
 		}
-		if(!($manifest instanceof \stdClass)){
+		if(!($manifest instanceof stdClass)){
 			throw new ResourcePackException("manifest.json should contain a JSON object, not " . gettype($manifest));
 		}
 
-		$mapper = new \JsonMapper();
+		$mapper = new JsonMapper();
 		$mapper->bExceptionOnUndefinedProperty = true;
 		$mapper->bExceptionOnMissingData = true;
 
 		try{
 			/** @var BehaviorManifest $manifest */
 			$manifest = $mapper->map($manifest, new BehaviorManifest());
-		}catch(\JsonMapper_Exception $e){
+		}catch(JsonMapper_Exception $e){
 			throw new ResourcePackException("Invalid manifest.json contents: " . $e->getMessage(), 0, $e);
 		}
 
@@ -128,7 +135,7 @@ final class BehaviorPack implements ResourcePack{
 	}
 
 	public function getSha256(bool $cached = true) : string{
-		if($this->sha256 === null or !$cached){
+		if($this->sha256 === null || !$cached){
 			$this->sha256 = hash_file("sha256", $this->path, true);
 		}
 		return $this->sha256;
@@ -137,7 +144,7 @@ final class BehaviorPack implements ResourcePack{
 	public function getPackChunk(int $start, int $length) : string{
 		fseek($this->fileResource, $start);
 		if(feof($this->fileResource)){
-			throw new \InvalidArgumentException("Requested a resource pack chunk with invalid start offset");
+			throw new InvalidArgumentException("Requested a resource pack chunk with invalid start offset");
 		}
 		return fread($this->fileResource, $length);
 	}
